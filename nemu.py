@@ -3,8 +3,10 @@ import os
 import random
 import time
 import re
+import threading
 from datetime import datetime
 from typing import Optional
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import aiomysql
 from aiogram import Bot, Dispatcher, F
@@ -85,6 +87,33 @@ learning_requests = {}
 
 # Bot's own message tracking for replies
 bot_messages = {}
+
+# HTTP SERVER FOR DEPLOYMENT
+class DummyHandler(BaseHTTPRequestHandler):
+    """Simple HTTP handler for keep-alive server"""
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Nemu bot is alive!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        # Suppress HTTP server logs
+        pass
+
+def start_dummy_server() -> None:
+    """Start dummy HTTP server for deployment platforms"""
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyHandler)
+    print(f"🌐 Dummy server listening on port {port}")
+    server.serve_forever()
+
+# Start HTTP server in background thread
+threading.Thread(target=start_dummy_server, daemon=True).start()
 
 async def init_database():
     """Initialize database connection pool"""
