@@ -669,26 +669,9 @@ async def start_command(message: Message):
 
         welcome_text = f"""🎉 <b>Hi {user.first_name}! I'm Nemu!</b>
 
-🤖 I'm a learning bot that gets smarter through conversations!
+😌 I learn how to talk by listening to my friends around me. Every chat helps me get a little smarter.  
 
-<b>How to interact with me:</b>
-💬 <b>In groups:</b> Mention "Nemu" in your message
-🗣️ <b>In private:</b> Just chat normally
-📚 <b>To teach me:</b> Reply to my "I don't know" messages
-
-<b>What makes me special:</b>
-🧠 I learn from every conversation
-💾 I remember what you teach me
-🎯 I get smarter with each interaction
-🌟 I help others using what you taught me
-
-<b>Example:</b>
-You: "Nemu, what is Python?"
-Me: "I don't know that yet. Can you teach me?"
-You: [Reply] "Python is a programming language"
-Me: "Thanks! I learned something new! 🧠✨"
-
-Start chatting with me! Mention my name in groups or just talk in private! 💕"""
+Just talk to me - I’ll try my best!"""
 
         await message.answer_photo(
             photo=random_image,
