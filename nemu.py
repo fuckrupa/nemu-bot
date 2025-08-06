@@ -6,7 +6,7 @@ import re
 import threading
 import logging
 from datetime import datetime
-from typing import Optional, Dict, any
+from typing import Optional, Dict, Any
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import aiomysql
