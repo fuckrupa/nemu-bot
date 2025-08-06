@@ -239,6 +239,49 @@ try:
 except Exception as e:
     logger.error(f"❌ Failed to start HTTP server thread: {e}")
 
+def validate_database_url(database_url: str) -> bool:
+    """Validate DATABASE_URL format and log details"""
+    if not database_url:
+        logger.error("❌ DATABASE_URL is empty or not set")
+        return False
+    
+    try:
+        import urllib.parse as urlparse
+        parsed = urlparse.urlparse(database_url)
+        
+        logger.debug(f"🔍 DATABASE_URL validation:")
+        logger.debug(f"  - Scheme: {parsed.scheme}")
+        logger.debug(f"  - Hostname: {parsed.hostname}")
+        logger.debug(f"  - Port: {parsed.port}")
+        logger.debug(f"  - Username: {parsed.username}")
+        logger.debug(f"  - Password: {'***' if parsed.password else 'None'}")
+        logger.debug(f"  - Database: {parsed.path[1:] if parsed.path else 'None'}")
+        logger.debug(f"  - Query params: {parsed.query}")
+        
+        if parsed.scheme not in ['mysql', 'mysql+pymysql']:
+            logger.warning(f"⚠️ Unusual database scheme: {parsed.scheme} (expected mysql)")
+        
+        if not parsed.hostname:
+            logger.error("❌ Missing hostname in DATABASE_URL")
+            return False
+            
+        if not parsed.username:
+            logger.error("❌ Missing username in DATABASE_URL")
+            return False
+            
+        if not parsed.password:
+            logger.warning("⚠️ No password specified in DATABASE_URL")
+            
+        if not parsed.path or parsed.path == '/':
+            logger.warning("⚠️ No database name specified in DATABASE_URL")
+        
+        logger.info("✅ DATABASE_URL format appears valid")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error parsing DATABASE_URL: {str(e)}")
+        return False
+
 async def init_database():
     """Initialize database connection pool"""
     global db_pool
@@ -246,6 +289,11 @@ async def init_database():
     retry_count = 0
 
     logger.info("🗄️ Initializing database connection...")
+    
+    # Validate DATABASE_URL first
+    if not validate_database_url(DATABASE_URL):
+        logger.error("❌ Invalid DATABASE_URL, skipping database initialization")
+        return False
 
     while retry_count < max_retries:
         try:
@@ -253,29 +301,48 @@ async def init_database():
             import urllib.parse as urlparse
             parsed = urlparse.urlparse(DATABASE_URL)
 
+            # Validate DATABASE_URL
+            if not parsed.hostname:
+                logger.error("❌ Invalid DATABASE_URL: Missing hostname")
+                return False
+            
+            if not parsed.username:
+                logger.error("❌ Invalid DATABASE_URL: Missing username")
+                return False
+
             logger.info(f"🔌 Attempting database connection (attempt {retry_count + 1}/{max_retries})...")
-            logger.debug(f"🏠 Database host: {parsed.hostname}:{parsed.port}")
+            logger.debug(f"🏠 Database host: {parsed.hostname}:{parsed.port or 3306}")
             logger.debug(f"👤 Database user: {parsed.username}")
             logger.debug(f"📦 Database name: {parsed.path[1:] if parsed.path else 'Not specified'}")
 
+            # Configure SSL properly
+            ssl_config = None
+            if 'ssl-mode=REQUIRED' in DATABASE_URL or 'sslmode=require' in DATABASE_URL:
+                import ssl
+                ssl_config = ssl.create_default_context()
+                ssl_config.check_hostname = False
+                ssl_config.verify_mode = ssl.CERT_NONE
+                logger.debug("🔐 SSL configured for database connection")
+
             db_pool = await aiomysql.create_pool(
                 host=parsed.hostname,
-                port=parsed.port,
+                port=parsed.port or 3306,
                 user=parsed.username,
                 password=parsed.password,
-                db=parsed.path[1:],  # Remove leading '/'
-                ssl={'ssl': True} if 'ssl-mode=REQUIRED' in DATABASE_URL else None,
+                db=parsed.path[1:] if parsed.path else None,  # Remove leading '/' if exists
+                ssl=ssl_config,
                 autocommit=True,
                 minsize=1,
                 maxsize=10,
-                connect_timeout=30
+                connect_timeout=30,
+                echo=False  # Disable SQL echo to reduce noise
             )
 
-            # Test the connection
+            # Test the connection with more detailed error info
             logger.debug("🧪 Testing database connection...")
             async with db_pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    await cursor.execute("SELECT 1")
+                    await cursor.execute("SELECT 1 AS test")
                     result = await cursor.fetchone()
                     logger.debug(f"✅ Database test query result: {result}")
 
@@ -284,15 +351,22 @@ async def init_database():
             logger.info("🎉 Database connection established successfully!")
             return True
 
+        except aiomysql.Error as e:
+            retry_count += 1
+            logger.error(f"❌ MySQL error (attempt {retry_count}): {str(e)} (Error code: {getattr(e, 'args', ['Unknown'])[0] if hasattr(e, 'args') and e.args else 'Unknown'})")
+        except ssl.SSLError as e:
+            retry_count += 1
+            logger.error(f"❌ SSL error (attempt {retry_count}): {str(e)}")
         except Exception as e:
             retry_count += 1
-            logger.error(f"❌ Database connection error (attempt {retry_count}): {str(e)}")
+            logger.error(f"❌ Database connection error (attempt {retry_count}): {str(e)} (Type: {type(e).__name__})")
 
             if retry_count < max_retries:
                 logger.warning(f"⏳ Retrying database connection in 5 seconds...")
                 await asyncio.sleep(5)
             else:
                 logger.error("💀 Failed to establish database connection after all retries!")
+                logger.error("💡 Check your DATABASE_URL format and credentials")
                 db_pool = None
                 return False
 
