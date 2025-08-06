@@ -22,7 +22,7 @@ from aiogram.enums import ParseMode, ChatType
 
 # Environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-DATABASE_URL = os.getenv("DATABASE_URL", "DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Images for /start command
 IMAGES = [
@@ -89,65 +89,95 @@ bot_messages = {}
 async def init_database():
     """Initialize database connection pool"""
     global db_pool
-    try:
-        # Parse DATABASE_URL
-        import urllib.parse as urlparse
-        parsed = urlparse.urlparse(DATABASE_URL)
-        
-        db_pool = await aiomysql.create_pool(
-            host=parsed.hostname,
-            port=parsed.port,
-            user=parsed.username,
-            password=parsed.password,
-            db=parsed.path[1:],  # Remove leading '/'
-            ssl={'ssl': True} if 'ssl-mode=REQUIRED' in DATABASE_URL else None,
-            autocommit=True,
-            minsize=1,
-            maxsize=10
-        )
-        
-        # Create tables
-        await create_tables()
-        print("Nemu's database connection established successfully!")
-        
-    except Exception as e:
-        print(f"Database connection error: {e}")
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Parse DATABASE_URL
+            import urllib.parse as urlparse
+            parsed = urlparse.urlparse(DATABASE_URL)
+            
+            print(f"Attempting to connect to database (attempt {retry_count + 1}/{max_retries})...")
+            
+            db_pool = await aiomysql.create_pool(
+                host=parsed.hostname,
+                port=parsed.port,
+                user=parsed.username,
+                password=parsed.password,
+                db=parsed.path[1:],  # Remove leading '/'
+                ssl={'ssl': True} if 'ssl-mode=REQUIRED' in DATABASE_URL else None,
+                autocommit=True,
+                minsize=1,
+                maxsize=10,
+                connect_timeout=30
+            )
+            
+            # Test the connection
+            async with db_pool.acquire() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("SELECT 1")
+            
+            # Create tables
+            await create_tables()
+            print("Nemu's database connection established successfully!")
+            return True
+            
+        except Exception as e:
+            retry_count += 1
+            print(f"Database connection error (attempt {retry_count}): {e}")
+            
+            if retry_count < max_retries:
+                print(f"Retrying in 5 seconds...")
+                await asyncio.sleep(5)
+            else:
+                print("Failed to establish database connection after all retries!")
+                db_pool = None
+                return False
 
 async def create_tables():
     """Create necessary tables"""
     global db_pool
-    async with db_pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            # Nemu's knowledge base
-            await cursor.execute("""
-                CREATE TABLE IF NOT EXISTS nemu_knowledge (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    chat_id BIGINT NOT NULL,
-                    trigger_message TEXT NOT NULL,
-                    response TEXT NOT NULL,
-                    taught_by_user_id BIGINT NOT NULL,
-                    taught_by_username VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    usage_count INT DEFAULT 0,
-                    INDEX idx_chat_trigger (chat_id, trigger_message(100)),
-                    FULLTEXT idx_message_fulltext (trigger_message, response)
-                )
-            """)
-            
-            # User interactions with Nemu
-            await cursor.execute("""
-                CREATE TABLE IF NOT EXISTS nemu_interactions (
-                    user_id BIGINT PRIMARY KEY,
-                    username VARCHAR(255),
-                    first_name VARCHAR(255),
-                    total_messages INT DEFAULT 0,
-                    times_taught_nemu INT DEFAULT 0,
-                    times_helped_by_nemu INT DEFAULT 0,
-                    first_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                )
-            """)
+    if not db_pool:
+        print("Warning: Database pool not available for table creation")
+        return
+        
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                # Nemu's knowledge base
+                await cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS nemu_knowledge (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        chat_id BIGINT NOT NULL,
+                        trigger_message TEXT NOT NULL,
+                        response TEXT NOT NULL,
+                        taught_by_user_id BIGINT NOT NULL,
+                        taught_by_username VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        usage_count INT DEFAULT 0,
+                        INDEX idx_chat_trigger (chat_id, trigger_message(100)),
+                        FULLTEXT idx_message_fulltext (trigger_message, response)
+                    )
+                """)
+                
+                # User interactions with Nemu
+                await cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS nemu_interactions (
+                        user_id BIGINT PRIMARY KEY,
+                        username VARCHAR(255),
+                        first_name VARCHAR(255),
+                        total_messages INT DEFAULT 0,
+                        times_taught_nemu INT DEFAULT 0,
+                        times_helped_by_nemu INT DEFAULT 0,
+                        first_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    )
+                """)
+                print("Database tables created/verified successfully!")
+    except Exception as e:
+        print(f"Error creating tables: {e}")
 
 def contains_nemu_trigger(text: str) -> bool:
     """Check if message contains Nemu trigger word"""
@@ -171,82 +201,69 @@ async def learn_from_reply(chat_id: int, user_id: int, username: str, original_q
     """Learn from user's reply to Nemu's learning request"""
     global db_pool
     
-    async with db_pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            # Check if similar knowledge already exists
-            await cursor.execute("""
-                SELECT id, response FROM nemu_knowledge 
-                WHERE chat_id = %s AND LOWER(trigger_message) = LOWER(%s)
-            """, (chat_id, original_query))
-            
-            existing = await cursor.fetchone()
-            
-            if existing:
-                # Update existing knowledge
+    if not db_pool:
+        print("Warning: Database not available for learning")
+        return "failed"
+    
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                # Check if similar knowledge already exists
                 await cursor.execute("""
-                    UPDATE nemu_knowledge 
-                    SET response = %s, taught_by_user_id = %s, taught_by_username = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                """, (teaching_response, user_id, username, existing[0]))
-                action = "updated"
-            else:
-                # Add new knowledge
+                    SELECT id, response FROM nemu_knowledge 
+                    WHERE chat_id = %s AND LOWER(trigger_message) = LOWER(%s)
+                """, (chat_id, original_query))
+                
+                existing = await cursor.fetchone()
+                
+                if existing:
+                    # Update existing knowledge
+                    await cursor.execute("""
+                        UPDATE nemu_knowledge 
+                        SET response = %s, taught_by_user_id = %s, taught_by_username = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (teaching_response, user_id, username, existing[0]))
+                    action = "updated"
+                else:
+                    # Add new knowledge
+                    await cursor.execute("""
+                        INSERT INTO nemu_knowledge (chat_id, trigger_message, response, taught_by_user_id, taught_by_username)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (chat_id, original_query, teaching_response, user_id, username))
+                    action = "learned"
+                
+                # Update user stats
                 await cursor.execute("""
-                    INSERT INTO nemu_knowledge (chat_id, trigger_message, response, taught_by_user_id, taught_by_username)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (chat_id, original_query, teaching_response, user_id, username))
-                action = "learned"
-            
-            # Update user stats
-            await cursor.execute("""
-                INSERT INTO nemu_interactions (user_id, username, times_taught_nemu)
-                VALUES (%s, %s, 1)
-                ON DUPLICATE KEY UPDATE
-                username = VALUES(username),
-                times_taught_nemu = times_taught_nemu + 1,
-                last_interaction = CURRENT_TIMESTAMP
-            """, (user_id, username))
-            
-            return action
+                    INSERT INTO nemu_interactions (user_id, username, times_taught_nemu)
+                    VALUES (%s, %s, 1)
+                    ON DUPLICATE KEY UPDATE
+                    username = VALUES(username),
+                    times_taught_nemu = times_taught_nemu + 1,
+                    last_interaction = CURRENT_TIMESTAMP
+                """, (user_id, username))
+                
+                return action
+    except Exception as e:
+        print(f"Error learning from reply: {e}")
+        return "failed"
 
 async def find_nemu_response(chat_id: int, query: str) -> Optional[str]:
     """Find response from Nemu's knowledge base"""
     global db_pool
     
-    if not query.strip():
+    if not db_pool or not query.strip():
         return None
     
-    async with db_pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            # Try exact match first
-            await cursor.execute("""
-                SELECT response, id FROM nemu_knowledge 
-                WHERE chat_id = %s AND LOWER(trigger_message) = LOWER(%s)
-                ORDER BY usage_count DESC, updated_at DESC
-                LIMIT 1
-            """, (chat_id, query))
-            
-            result = await cursor.fetchone()
-            
-            if result and result[0]:
-                # Update usage count
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                # Try exact match first
                 await cursor.execute("""
-                    UPDATE nemu_knowledge SET usage_count = usage_count + 1 
-                    WHERE id = %s
-                """, (result[1],))
-                return result[0]
-            
-            # Try fulltext search for similar content
-            if len(query.split()) >= 2:
-                await cursor.execute("""
-                    SELECT response, id,
-                    MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) as relevance
-                    FROM nemu_knowledge 
-                    WHERE chat_id = %s 
-                    AND MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) > 0.3
-                    ORDER BY relevance DESC, usage_count DESC
+                    SELECT response, id FROM nemu_knowledge 
+                    WHERE chat_id = %s AND LOWER(trigger_message) = LOWER(%s)
+                    ORDER BY usage_count DESC, updated_at DESC
                     LIMIT 1
-                """, (query, chat_id, query))
+                """, (chat_id, query))
                 
                 result = await cursor.fetchone()
                 
@@ -257,26 +274,50 @@ async def find_nemu_response(chat_id: int, query: str) -> Optional[str]:
                         WHERE id = %s
                     """, (result[1],))
                     return result[0]
-            
-            # Try partial matching
-            await cursor.execute("""
-                SELECT response, id FROM nemu_knowledge 
-                WHERE chat_id = %s 
-                AND (LOWER(trigger_message) LIKE CONCAT('%%', LOWER(%s), '%%') 
-                OR LOWER(%s) LIKE CONCAT('%%', LOWER(trigger_message), '%%'))
-                ORDER BY usage_count DESC, updated_at DESC
-                LIMIT 1
-            """, (chat_id, query, query))
-            
-            result = await cursor.fetchone()
-            
-            if result and result[0]:
-                # Update usage count
+                
+                # Try fulltext search for similar content
+                if len(query.split()) >= 2:
+                    await cursor.execute("""
+                        SELECT response, id,
+                        MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) as relevance
+                        FROM nemu_knowledge 
+                        WHERE chat_id = %s 
+                        AND MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) > 0.3
+                        ORDER BY relevance DESC, usage_count DESC
+                        LIMIT 1
+                    """, (query, chat_id, query))
+                    
+                    result = await cursor.fetchone()
+                    
+                    if result and result[0]:
+                        # Update usage count
+                        await cursor.execute("""
+                            UPDATE nemu_knowledge SET usage_count = usage_count + 1 
+                            WHERE id = %s
+                        """, (result[1],))
+                        return result[0]
+                
+                # Try partial matching
                 await cursor.execute("""
-                    UPDATE nemu_knowledge SET usage_count = usage_count + 1 
-                    WHERE id = %s
-                """, (result[1],))
-                return result[0]
+                    SELECT response, id FROM nemu_knowledge 
+                    WHERE chat_id = %s 
+                    AND (LOWER(trigger_message) LIKE CONCAT('%%', LOWER(%s), '%%') 
+                    OR LOWER(%s) LIKE CONCAT('%%', LOWER(trigger_message), '%%'))
+                    ORDER BY usage_count DESC, updated_at DESC
+                    LIMIT 1
+                """, (chat_id, query, query))
+                
+                result = await cursor.fetchone()
+                
+                if result and result[0]:
+                    # Update usage count
+                    await cursor.execute("""
+                        UPDATE nemu_knowledge SET usage_count = usage_count + 1 
+                        WHERE id = %s
+                    """, (result[1],))
+                    return result[0]
+    except Exception as e:
+        print(f"Error finding response: {e}")
     
     return None
 
@@ -284,20 +325,26 @@ async def update_user_interaction(user_id: int, username: str = None, first_name
     """Update user interaction statistics"""
     global db_pool
     
-    async with db_pool.acquire() as conn:
-        async with conn.cursor() as cursor:
-            helped_count = 1 if helped_by_nemu else 0
-            
-            await cursor.execute("""
-                INSERT INTO nemu_interactions (user_id, username, first_name, total_messages, times_helped_by_nemu)
-                VALUES (%s, %s, %s, 1, %s)
-                ON DUPLICATE KEY UPDATE
-                username = VALUES(username),
-                first_name = VALUES(first_name),
-                total_messages = total_messages + 1,
-                times_helped_by_nemu = times_helped_by_nemu + VALUES(times_helped_by_nemu),
-                last_interaction = CURRENT_TIMESTAMP
-            """, (user_id, username, first_name, helped_count))
+    if not db_pool:
+        return
+    
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                helped_count = 1 if helped_by_nemu else 0
+                
+                await cursor.execute("""
+                    INSERT INTO nemu_interactions (user_id, username, first_name, total_messages, times_helped_by_nemu)
+                    VALUES (%s, %s, %s, 1, %s)
+                    ON DUPLICATE KEY UPDATE
+                    username = VALUES(username),
+                    first_name = VALUES(first_name),
+                    total_messages = total_messages + 1,
+                    times_helped_by_nemu = times_helped_by_nemu + VALUES(times_helped_by_nemu),
+                    last_interaction = CURRENT_TIMESTAMP
+                """, (user_id, username, first_name, helped_count))
+    except Exception as e:
+        print(f"Error updating user interaction: {e}")
 
 async def setup_commands():
     """Setup bot commands menu"""
@@ -539,8 +586,12 @@ async def main():
     """Main function to run the bot"""
     print("Initializing Nemu...")
     
-    # Initialize database
-    await init_database()
+    # Initialize database with retry logic
+    db_success = await init_database()
+    
+    if not db_success:
+        print("WARNING: Starting Nemu without database connection!")
+        print("Nemu will work with limited functionality (no learning/memory)")
     
     # Setup commands menu
     await setup_commands()
