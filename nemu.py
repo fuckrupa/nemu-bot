@@ -74,36 +74,33 @@ IMAGES = [
 
 # Success messages for learning - SHORT AND STRAIGHTFORWARD
 SUCCESS_LEARNING_MESSAGES = [
-    "Got it! ✅",
-    "Learned! 🌟", 
-    "Saved globally! 🌍",
-    "Updated! ✨"
+    "Got it!",
+    "Learned!", 
+    "Okay!",
+    "Understood!"
 ]
 
 # Failure messages for learning - SHORT AND STRAIGHTFORWARD
 FAILURE_LEARNING_MESSAGES = [
-    "Failed to learn! ❌",
-    "Learning error! 🔧",
-    "Can't save now! ⚠️",
-    "Database busy! 🔄"
+    "Failed to learn!",
+    "Learning error!",
+    "Can't save now!",
+    "Database busy!"
 ]
 
 # Don't know response messages - SHORT AND STRAIGHTFORWARD
 DONT_KNOW_MESSAGES = [
-    "I don't know. Teach me? 🤔",
-    "Not sure. Help me learn? 📚",
-    "Unknown. Can you explain? 🧠",
-    "New to me. Teach? ✨",
-    "Don't have info. Help? 💭"
+    "I don't know. Teach me.",
+    "Help me learn.",
+    "Unknown. Can you explain?",
+    "New to me. Teach?",
+    "Don't know. Help?"
 ]
 
 # Personality prefixes for responses
 PERSONALITY_PREFIXES = [
-    "🌍 ",
-    "✨ ",
-    "🌟 ",
-    "💫 ",
-    "🧠 "
+    "😶 ",
+    "😌 "
 ]
 
 # Logging color configuration
@@ -119,12 +116,12 @@ LOG_COLORS = {
 # Start message template
 START_MESSAGE = """🎉 <b>Hi {first_name}! I'm Nemu!</b>
 
-🌍 I learn globally from everyone and share knowledge everywhere! Every chat helps me get smarter for all users.
+😌 I learn how to talk by listening to my friends around me. Every chat helps me get a little smarter.
 
 Just talk to me - I'll try my best!"""
 
 # Short help message
-HELP_SHORT_MESSAGE = """🤖 Hi! I'm <b>Nemu</b>, a global learning bot!
+HELP_SHORT_MESSAGE = """😶 Hi! I'm <b>Nemu</b>, a global learning bot!
 
 💬 In groups, mention "Nemu" in your message to talk with me
 📚 I learn from conversations when you teach me by replying to my messages
@@ -133,7 +130,7 @@ HELP_SHORT_MESSAGE = """🤖 Hi! I'm <b>Nemu</b>, a global learning bot!
 ✨ Just mention my name and chat naturally - I'll learn as we go!"""
 
 # Long help message
-HELP_LONG_MESSAGE = """🤖 <b>Meet Nemu - Your Global Learning Companion</b>
+HELP_LONG_MESSAGE = """😶 <b>Meet Nemu - Your Global Learning Companion</b>
 
 <b>How to interact with me:</b>
 • In groups: Include "Nemu" in your message
@@ -158,7 +155,7 @@ HELP_LONG_MESSAGE = """🤖 <b>Meet Nemu - Your Global Learning Companion</b>
 
 # Bot commands array
 BOT_COMMANDS = [
-    {"command": "start", "description": "💐 Meet Nemu"},
+    {"command": "start", "description": "💐 Wake me up"},
     {"command": "help", "description": "📙 Learn about Nemu"},
 ]
 
@@ -901,7 +898,7 @@ async def handle_nemu_conversation(message: Message):
 
             # Show typing indicator
             await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            await asyncio.sleep(1)  # Brief pause for typing effect
+            await asyncio.sleep(2)  # Brief pause for typing effect
 
             response_msg = await message.reply(selected_message, parse_mode=ParseMode.HTML)
             bot_messages[response_msg.message_id] = True
@@ -958,7 +955,7 @@ async def handle_nemu_conversation(message: Message):
 
             # Show typing indicator
             await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            await asyncio.sleep(1)  # Brief pause for typing effect
+            await asyncio.sleep(2)  # Brief pause for typing effect
 
             response_msg = await message.reply(response, parse_mode=ParseMode.HTML)
             bot_messages[response_msg.message_id] = True
@@ -974,7 +971,7 @@ async def handle_nemu_conversation(message: Message):
             
             # Show typing indicator
             await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            await asyncio.sleep(1)  # Brief pause for typing effect
+            await asyncio.sleep(2)  # Brief pause for typing effect
             
             response_msg = await message.reply(learning_response, parse_mode=ParseMode.HTML)
 
