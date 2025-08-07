@@ -192,9 +192,9 @@ except Exception as e:
 db_pool = None
 
 # Help messages
-HELP_SHORT = "🤖 Hi! I'm <b>Nemu</b>, a learning bot!\n\n💬 In groups, mention \"Nemu\" in your message to talk with me\n📚 I learn from conversations when you teach me by replying to my messages\n🧠 I remember everything you teach me and use it to help others\n\n✨ Just mention my name and chat naturally - I'll learn as we go!"
+HELP_SHORT = "🤖 Hi! I'm <b>Nemu</b>, a global learning bot!\n\n💬 In groups, mention \"Nemu\" in your message to talk with me\n📚 I learn from conversations when you teach me by replying to my messages\n🌍 I remember everything globally and share knowledge across all chats\n\n✨ Just mention my name and chat naturally - I'll learn as we go!"
 
-HELP_LONG = "🤖 <b>Meet Nemu - Your Learning Companion</b>\n\n<b>How to interact with me:</b>\n• In groups: Include \"Nemu\" in your message\n• In private: Just send messages normally\n• Reply to my messages to teach me new things\n\n<b>How I learn:</b>\n🧠 When I don't know something, I'll ask you to teach me\n📝 Reply to my \"I don't know\" messages to teach me\n💾 I remember everything and use it to help others\n🎯 I get smarter with every interaction\n\n<b>Commands Available:</b>\n/start - Meet me and see what I can do\n/help - Toggle this help information\n\n<b>Pro Tips:</b>\n• Teach me by replying when I ask\n• I work great in group conversations\n• The more you teach me, the smarter I become!"
+HELP_LONG = "🤖 <b>Meet Nemu - Your Global Learning Companion</b>\n\n<b>How to interact with me:</b>\n• In groups: Include \"Nemu\" in your message\n• In private: Just send messages normally\n• Reply to my messages to teach me new things\n\n<b>How I learn globally:</b>\n🧠 When I don't know something, I'll ask you to teach me\n📝 Reply to my \"I don't know\" messages to teach me\n🌍 I remember everything globally across all chats\n🎯 Knowledge learned in one chat is available everywhere\n💫 I get smarter with every interaction from anyone\n\n<b>Commands Available:</b>\n/start - Meet me and see what I can do\n/help - Toggle this help information\n\n<b>Pro Tips:</b>\n• Teach me by replying when I ask\n• I work great in group conversations\n• Knowledge shared anywhere benefits everyone!"
 
 # Nemu's learning requests - store message IDs waiting for teaching
 learning_requests = {}
@@ -371,10 +371,10 @@ async def init_database():
                 return False
 
 async def create_tables():
-    """Create necessary tables"""
+    """Create necessary tables for global learning"""
     global db_pool
     
-    logger.info("📋 Creating/verifying database tables...")
+    logger.info("📋 Creating/verifying database tables for global learning...")
     
     if not db_pool:
         logger.warning("⚠️ Database pool not available for table creation")
@@ -383,27 +383,29 @@ async def create_tables():
     try:
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                logger.debug("🏗️ Creating nemu_knowledge table...")
-                # Nemu's knowledge base
+                logger.debug("🏗️ Creating nemu_global_knowledge table...")
+                # MODIFIED: Removed chat_id dependency for global knowledge
                 await cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS nemu_knowledge (
+                    CREATE TABLE IF NOT EXISTS nemu_global_knowledge (
                         id INT AUTO_INCREMENT PRIMARY KEY,
-                        chat_id BIGINT NOT NULL,
                         trigger_message TEXT NOT NULL,
                         response TEXT NOT NULL,
                         taught_by_user_id BIGINT NOT NULL,
                         taught_by_username VARCHAR(255),
+                        taught_in_chat_id BIGINT NOT NULL,
+                        taught_in_chat_title VARCHAR(255),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                         usage_count INT DEFAULT 0,
-                        INDEX idx_chat_trigger (chat_id, trigger_message(100)),
+                        global_usage_count INT DEFAULT 0,
+                        INDEX idx_trigger (trigger_message(100)),
                         FULLTEXT idx_message_fulltext (trigger_message, response)
                     )
                 """)
-                logger.debug("✅ nemu_knowledge table created/verified")
+                logger.debug("✅ nemu_global_knowledge table created/verified")
 
                 logger.debug("🏗️ Creating nemu_interactions table...")
-                # User interactions with Nemu
+                # User interactions with Nemu (unchanged)
                 await cursor.execute("""
                     CREATE TABLE IF NOT EXISTS nemu_interactions (
                         user_id BIGINT PRIMARY KEY,
@@ -450,11 +452,11 @@ def extract_query_from_nemu_message(text: str) -> str:
     
     return extracted_query
 
-async def learn_from_reply(chat_id: int, user_id: int, username: str, original_query: str, teaching_response: str):
-    """Learn from user's reply to Nemu's learning request"""
+async def learn_from_reply(chat_id: int, user_id: int, username: str, chat_title: str, original_query: str, teaching_response: str):
+    """Learn from user's reply to Nemu's learning request - GLOBALLY"""
     global db_pool
 
-    logger.info(f"🎓 Learning attempt - User: {username} ({user_id}), Query: '{original_query}', Response: '{teaching_response[:50]}...'")
+    logger.info(f"🌍 GLOBAL learning attempt - User: {username} ({user_id}), Query: '{original_query}', Response: '{teaching_response[:50]}...'")
 
     if not db_pool:
         logger.warning("⚠️ Database not available for learning")
@@ -463,31 +465,34 @@ async def learn_from_reply(chat_id: int, user_id: int, username: str, original_q
     try:
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                logger.debug(f"🔍 Checking for existing knowledge for query: '{original_query}'")
-                # Check if similar knowledge already exists
+                logger.debug(f"🔍 Checking for existing GLOBAL knowledge for query: '{original_query}'")
+                # MODIFIED: Check globally, not per chat
                 await cursor.execute("""
-                    SELECT id, response FROM nemu_knowledge 
-                    WHERE chat_id = %s AND LOWER(trigger_message) = LOWER(%s)
-                """, (chat_id, original_query))
+                    SELECT id, response FROM nemu_global_knowledge 
+                    WHERE LOWER(trigger_message) = LOWER(%s)
+                    ORDER BY global_usage_count DESC, updated_at DESC
+                    LIMIT 1
+                """, (original_query,))
 
                 existing = await cursor.fetchone()
 
                 if existing:
-                    logger.info(f"🔄 Updating existing knowledge (ID: {existing[0]})")
+                    logger.info(f"🔄 Updating existing GLOBAL knowledge (ID: {existing[0]})")
                     # Update existing knowledge
                     await cursor.execute("""
-                        UPDATE nemu_knowledge 
-                        SET response = %s, taught_by_user_id = %s, taught_by_username = %s, updated_at = CURRENT_TIMESTAMP
+                        UPDATE nemu_global_knowledge 
+                        SET response = %s, taught_by_user_id = %s, taught_by_username = %s, 
+                            taught_in_chat_id = %s, taught_in_chat_title = %s, updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s
-                    """, (teaching_response, user_id, username, existing[0]))
+                    """, (teaching_response, user_id, username, chat_id, chat_title, existing[0]))
                     action = "updated"
                 else:
-                    logger.info("➕ Adding new knowledge entry")
-                    # Add new knowledge
+                    logger.info("➕ Adding new GLOBAL knowledge entry")
+                    # Add new knowledge globally
                     await cursor.execute("""
-                        INSERT INTO nemu_knowledge (chat_id, trigger_message, response, taught_by_user_id, taught_by_username)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (chat_id, original_query, teaching_response, user_id, username))
+                        INSERT INTO nemu_global_knowledge (trigger_message, response, taught_by_user_id, taught_by_username, taught_in_chat_id, taught_in_chat_title)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (original_query, teaching_response, user_id, username, chat_id, chat_title))
                     action = "learned"
 
                 logger.debug(f"📊 Updating user interaction stats for user {user_id}")
@@ -501,17 +506,17 @@ async def learn_from_reply(chat_id: int, user_id: int, username: str, original_q
                     last_interaction = CURRENT_TIMESTAMP
                 """, (user_id, username))
 
-                logger.info(f"✅ Learning successful: {action}")
+                logger.info(f"✅ GLOBAL learning successful: {action}")
                 return action
     except Exception as e:
         logger.error(f"❌ Error learning from reply: {str(e)}")
         return "failed"
 
-async def find_nemu_response(chat_id: int, query: str) -> Optional[str]:
-    """Find response from Nemu's knowledge base"""
+async def find_nemu_response(query: str) -> Optional[str]:
+    """Find response from Nemu's GLOBAL knowledge base"""
     global db_pool
 
-    logger.debug(f"🔍 Searching for response to query: '{query}' in chat {chat_id}")
+    logger.debug(f"🌍 Searching GLOBAL knowledge for query: '{query}'")
 
     if not db_pool or not query.strip():
         logger.warning("⚠️ Database unavailable or empty query")
@@ -520,73 +525,74 @@ async def find_nemu_response(chat_id: int, query: str) -> Optional[str]:
     try:
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                logger.debug("🎯 Attempting exact match search")
-                # Try exact match first
+                logger.debug("🎯 Attempting exact match search in GLOBAL knowledge")
+                # MODIFIED: Search globally, not per chat
                 await cursor.execute("""
-                    SELECT response, id FROM nemu_knowledge 
-                    WHERE chat_id = %s AND LOWER(trigger_message) = LOWER(%s)
-                    ORDER BY usage_count DESC, updated_at DESC
+                    SELECT response, id FROM nemu_global_knowledge 
+                    WHERE LOWER(trigger_message) = LOWER(%s)
+                    ORDER BY global_usage_count DESC, updated_at DESC
                     LIMIT 1
-                """, (chat_id, query))
+                """, (query,))
 
                 result = await cursor.fetchone()
 
                 if result and result[0]:
-                    logger.info(f"✅ Exact match found (ID: {result[1]}), updating usage count")
-                    # Update usage count
+                    logger.info(f"✅ GLOBAL exact match found (ID: {result[1]}), updating usage count")
+                    # Update both usage counts
                     await cursor.execute("""
-                        UPDATE nemu_knowledge SET usage_count = usage_count + 1 
+                        UPDATE nemu_global_knowledge 
+                        SET usage_count = usage_count + 1, global_usage_count = global_usage_count + 1 
                         WHERE id = %s
                     """, (result[1],))
                     return result[0]
 
-                logger.debug("🔎 Exact match not found, trying fulltext search")
-                # Try fulltext search for similar content
+                logger.debug("🔎 Exact match not found, trying GLOBAL fulltext search")
+                # Try fulltext search for similar content globally
                 if len(query.split()) >= 2:
                     await cursor.execute("""
                         SELECT response, id,
                         MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) as relevance
-                        FROM nemu_knowledge 
-                        WHERE chat_id = %s 
-                        AND MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) > 0.3
-                        ORDER BY relevance DESC, usage_count DESC
+                        FROM nemu_global_knowledge 
+                        WHERE MATCH(trigger_message) AGAINST(%s IN NATURAL LANGUAGE MODE) > 0.3
+                        ORDER BY relevance DESC, global_usage_count DESC
                         LIMIT 1
-                    """, (query, chat_id, query))
+                    """, (query, query))
 
                     result = await cursor.fetchone()
 
                     if result and result[0]:
-                        logger.info(f"✅ Fulltext match found (ID: {result[1]}, relevance: {result[2]:.2f})")
-                        # Update usage count
+                        logger.info(f"✅ GLOBAL fulltext match found (ID: {result[1]}, relevance: {result[2]:.2f})")
+                        # Update both usage counts
                         await cursor.execute("""
-                            UPDATE nemu_knowledge SET usage_count = usage_count + 1 
+                            UPDATE nemu_global_knowledge 
+                            SET usage_count = usage_count + 1, global_usage_count = global_usage_count + 1 
                             WHERE id = %s
                         """, (result[1],))
                         return result[0]
 
-                logger.debug("🔍 Fulltext search failed, trying partial matching")
-                # Try partial matching
+                logger.debug("🔍 Fulltext search failed, trying GLOBAL partial matching")
+                # Try partial matching globally
                 await cursor.execute("""
-                    SELECT response, id FROM nemu_knowledge 
-                    WHERE chat_id = %s 
-                    AND (LOWER(trigger_message) LIKE CONCAT('%%', LOWER(%s), '%%') 
-                    OR LOWER(%s) LIKE CONCAT('%%', LOWER(trigger_message), '%%'))
-                    ORDER BY usage_count DESC, updated_at DESC
+                    SELECT response, id FROM nemu_global_knowledge 
+                    WHERE LOWER(trigger_message) LIKE CONCAT('%%', LOWER(%s), '%%') 
+                    OR LOWER(%s) LIKE CONCAT('%%', LOWER(trigger_message), '%%')
+                    ORDER BY global_usage_count DESC, updated_at DESC
                     LIMIT 1
-                """, (chat_id, query, query))
+                """, (query, query))
 
                 result = await cursor.fetchone()
 
                 if result and result[0]:
-                    logger.info(f"✅ Partial match found (ID: {result[1]})")
-                    # Update usage count
+                    logger.info(f"✅ GLOBAL partial match found (ID: {result[1]})")
+                    # Update both usage counts
                     await cursor.execute("""
-                        UPDATE nemu_knowledge SET usage_count = usage_count + 1 
+                        UPDATE nemu_global_knowledge 
+                        SET usage_count = usage_count + 1, global_usage_count = global_usage_count + 1 
                         WHERE id = %s
                     """, (result[1],))
                     return result[0]
                     
-                logger.debug("❌ No matches found in knowledge base")
+                logger.debug("❌ No matches found in GLOBAL knowledge base")
     except Exception as e:
         logger.error(f"❌ Error finding response: {str(e)}")
 
@@ -669,9 +675,9 @@ async def start_command(message: Message):
 
         welcome_text = f"""🎉 <b>Hi {user.first_name}! I'm Nemu!</b>
 
-😌 I learn how to talk by listening to my friends around me. Every chat helps me get a little smarter.  
+🌍 I learn globally from everyone and share knowledge everywhere! Every chat helps me get smarter for all users.
 
-Just talk to me - I’ll try my best!"""
+Just talk to me - I'll try my best!"""
 
         await message.answer_photo(
             photo=random_image,
@@ -792,7 +798,7 @@ async def ping_command(message: Message):
 
 @dp.message()
 async def handle_nemu_conversation(message: Message):
-    """Handle Nemu's conversations and learning"""
+    """Handle Nemu's conversations and GLOBAL learning"""
     if not message.text:
         logger.debug("📝 Ignoring non-text message")
         return
@@ -802,6 +808,7 @@ async def handle_nemu_conversation(message: Message):
     chat_id = message.chat.id
     text = message.text.strip()
     user = message.from_user
+    chat_title = message.chat.title or message.chat.first_name or f"Chat {chat_id}"
 
     log_with_user_info("DEBUG", f"📨 Processing message: '{text[:100]}...'", user_info)
 
@@ -810,30 +817,30 @@ async def handle_nemu_conversation(message: Message):
         if message.reply_to_message and message.reply_to_message.message_id in learning_requests:
             original_query = learning_requests[message.reply_to_message.message_id]
             
-            log_with_user_info("INFO", f"🎓 User teaching Nemu - Query: '{original_query}', Teaching: '{text[:50]}...'", user_info)
+            log_with_user_info("INFO", f"🌍 User teaching Nemu GLOBALLY - Query: '{original_query}', Teaching: '{text[:50]}...'", user_info)
 
-            # Learn from the reply
-            action = await learn_from_reply(chat_id, user_id, user.username or user.first_name, original_query, text)
+            # Learn from the reply GLOBALLY
+            action = await learn_from_reply(chat_id, user_id, user.username or user.first_name, chat_title, original_query, text)
 
             # Remove from learning requests
             del learning_requests[message.reply_to_message.message_id]
             logger.debug(f"🗑️ Removed learning request for message ID: {message.reply_to_message.message_id}")
 
-            # Thank the user for teaching
+            # Thank the user for teaching globally
             thank_messages = [
-                f"Thanks {user.first_name}! I {action} something new! 🧠✨",
-                f"Awesome {user.first_name}! I've {action} that. Thanks for teaching me! 💕",
-                f"Great! I {action} that information. Thank you {user.first_name}! 🎉",
-                f"Perfect! I've {action} that knowledge. Thanks for helping me learn! 🌟"
+                f"Thanks {user.first_name}! I {action} something new globally! 🌍✨",
+                f"Awesome {user.first_name}! I've {action} that everywhere. Thanks for teaching me! 🌟💕",
+                f"Great! I {action} that information globally. Thank you {user.first_name}! 🌍🎉",
+                f"Perfect! I've {action} that knowledge for everyone. Thanks for helping me learn! 🌍🌟"
             ]
 
             selected_message = random.choice(thank_messages)
-            logger.debug(f"💬 Selected thank you message: '{selected_message}'")
+            logger.debug(f"💬 Selected global thank you message: '{selected_message}'")
 
             response_msg = await message.reply(selected_message, parse_mode=ParseMode.HTML)
             bot_messages[response_msg.message_id] = True
 
-            log_with_user_info("INFO", f"✅ Learning completed: {action}", user_info)
+            log_with_user_info("INFO", f"✅ GLOBAL learning completed: {action}", user_info)
             return
 
         # Check if this is a reply to any of Nemu's messages
@@ -869,22 +876,23 @@ async def handle_nemu_conversation(message: Message):
             log_with_user_info("WARNING", f"⚠️ Query too short or empty: '{query}'", user_info)
             return
 
-        # Try to find a response
-        logger.debug(f"🔍 Searching knowledge base for query: '{query}'")
-        response = await find_nemu_response(chat_id, query)
+        # Try to find a response from GLOBAL knowledge
+        logger.debug(f"🌍 Searching GLOBAL knowledge base for query: '{query}'")
+        response = await find_nemu_response(query)
 
         if response:
-            # Nemu knows the answer!
-            log_with_user_info("INFO", f"🧠 Knowledge found, responding: '{response[:50]}...'", user_info)
+            # Nemu knows the answer from GLOBAL knowledge!
+            log_with_user_info("INFO", f"🧠 GLOBAL knowledge found, responding: '{response[:50]}...'", user_info)
             await update_user_interaction(user_id, user.username, user.first_name, helped_by_nemu=True)
 
             # Add some personality to responses occasionally
-            if random.random() < 0.1:  # 10% chance
+            if random.random() < 0.15:  # 15% chance for global responses
                 personality_prefixes = [
-                    "😊 ",
+                    "🌍 ",
                     "✨ ",
                     "🌟 ",
-                    "💫 "
+                    "💫 ",
+                    "🧠 "
                 ]
                 personality_prefix = random.choice(personality_prefixes)
                 response = personality_prefix + response
@@ -893,22 +901,22 @@ async def handle_nemu_conversation(message: Message):
             response_msg = await message.reply(response, parse_mode=ParseMode.HTML)
             bot_messages[response_msg.message_id] = True
 
-            log_with_user_info("INFO", "✅ Response sent successfully", user_info)
+            log_with_user_info("INFO", "✅ GLOBAL response sent successfully", user_info)
 
         else:
-            # Nemu doesn't know - ask for teaching
-            log_with_user_info("INFO", f"❓ No knowledge found, requesting teaching for: '{query}'", user_info)
+            # Nemu doesn't know - ask for teaching (will be stored globally)
+            log_with_user_info("INFO", f"❓ No GLOBAL knowledge found, requesting teaching for: '{query}'", user_info)
             
             learning_messages = [
-                f"I don't know that yet. Can you teach me? 🤔",
-                f"Hmm, I haven't learned about that. Can you help me learn? 📚",
-                f"I'm not sure about that. Could you teach me? 🧠",
-                f"That's new to me! Can you explain it to me? ✨",
-                f"I don't have that information yet. Would you like to teach me? 💭"
+                f"I don't know that yet. Can you teach me? I'll remember it everywhere! 🌍🤔",
+                f"Hmm, I haven't learned about that globally. Can you help me learn? 🌟📚",
+                f"I'm not sure about that. Could you teach me? I'll share it with everyone! 🌍🧠",
+                f"That's new to me globally! Can you explain it to me? ✨",
+                f"I don't have that information yet anywhere. Would you like to teach me? 🌍💭"
             ]
 
             learning_response = random.choice(learning_messages)
-            logger.debug(f"📚 Selected learning request: '{learning_response}'")
+            logger.debug(f"📚 Selected global learning request: '{learning_response}'")
             
             response_msg = await message.reply(learning_response, parse_mode=ParseMode.HTML)
 
@@ -916,7 +924,7 @@ async def handle_nemu_conversation(message: Message):
             learning_requests[response_msg.message_id] = query
             bot_messages[response_msg.message_id] = True
             
-            logger.debug(f"📝 Stored learning request - Message ID: {response_msg.message_id}, Query: '{query}'")
+            logger.debug(f"📝 Stored GLOBAL learning request - Message ID: {response_msg.message_id}, Query: '{query}'")
 
             # Clean up old learning requests (keep only last 100)
             if len(learning_requests) > 100:
@@ -932,7 +940,7 @@ async def handle_nemu_conversation(message: Message):
                     del bot_messages[key]
                 logger.debug(f"🧹 Cleaned up {len(oldest_keys)} old bot message tracking entries")
 
-            log_with_user_info("INFO", "✅ Learning request sent successfully", user_info)
+            log_with_user_info("INFO", "✅ GLOBAL learning request sent successfully", user_info)
 
     except Exception as e:
         logger.error(f"❌ Error in conversation handler: {str(e)}")
@@ -946,11 +954,11 @@ async def handle_nemu_conversation(message: Message):
 
 async def main():
     """Main function to run the bot"""
-    logger.info("🚀 Nemu initialization started...")
+    logger.info("🚀 Nemu GLOBAL LEARNING initialization started...")
 
     try:
         # Initialize database with retry logic
-        logger.info("🗄️ Initializing database...")
+        logger.info("🗄️ Initializing database for global learning...")
         db_success = await init_database()
 
         if not db_success:
@@ -961,7 +969,7 @@ async def main():
         logger.info("⚙️ Setting up commands...")
         await setup_commands()
 
-        logger.info("🎉 Nemu is ready and starting polling...")
+        logger.info("🎉 Nemu GLOBAL LEARNING is ready and starting polling...")
 
         # Start polling
         await dp.start_polling(bot)
@@ -981,13 +989,13 @@ async def main():
             except Exception as e:
                 logger.error(f"❌ Error closing database pool: {str(e)}")
         
-        logger.info("👋 Nemu shutdown complete")
+        logger.info("👋 Nemu GLOBAL LEARNING shutdown complete")
 
 if __name__ == "__main__":
     try:
-        logger.info("=" * 50)
-        logger.info("🤖 NEMU BOT STARTING UP")
-        logger.info("=" * 50)
+        logger.info("=" * 60)
+        logger.info("🤖 NEMU BOT - GLOBAL LEARNING MODE - STARTING UP")
+        logger.info("=" * 60)
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("⏹️ Bot stopped by user")
