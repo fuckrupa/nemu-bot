@@ -1,28 +1,27 @@
-import asyncio
 import os
-import random
-import time
 import re
-import threading
+import time
+import asyncio
+import random
 import logging
+import aiomysql
+import threading
+import urllib.parse as urlparse
 from datetime import datetime
 from typing import Optional, Dict, Any
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-import aiomysql
-import urllib.parse as urlparse
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from aiogram.types import (
     Message, 
-    InlineKeyboardButton, 
-    InlineKeyboardMarkup,
-    CallbackQuery,
+    CallbackQuery, 
     BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     BotCommandScopeDefault
 )
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.enums import ParseMode, ChatType, ChatAction
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # Bot token and database configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
