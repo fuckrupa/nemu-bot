@@ -499,9 +499,9 @@ async def learn_from_reply(chat_id: int, user_id: int, username: str, chat_title
                 # Update user stats
                 await cursor.execute("""
                     INSERT INTO nemu_interactions (user_id, username, times_taught_nemu)
-                    VALUES (%s, %s, 1)
+                    VALUES (%s, %s, 1) AS new_data
                     ON DUPLICATE KEY UPDATE
-                    username = VALUES(username),
+                    username = new_data.username,
                     times_taught_nemu = times_taught_nemu + 1,
                     last_interaction = CURRENT_TIMESTAMP
                 """, (user_id, username))
@@ -615,12 +615,12 @@ async def update_user_interaction(user_id: int, username: str = None, first_name
 
                 await cursor.execute("""
                     INSERT INTO nemu_interactions (user_id, username, first_name, total_messages, times_helped_by_nemu)
-                    VALUES (%s, %s, %s, 1, %s)
+                    VALUES (%s, %s, %s, 1, %s) AS new_data
                     ON DUPLICATE KEY UPDATE
-                    username = VALUES(username),
-                    first_name = VALUES(first_name),
+                    username = new_data.username,
+                    first_name = new_data.first_name,
                     total_messages = total_messages + 1,
-                    times_helped_by_nemu = times_helped_by_nemu + VALUES(times_helped_by_nemu),
+                    times_helped_by_nemu = times_helped_by_nemu + new_data.times_helped_by_nemu,
                     last_interaction = CURRENT_TIMESTAMP
                 """, (user_id, username, first_name, helped_count))
                 
