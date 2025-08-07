@@ -502,7 +502,7 @@ async def learn_from_reply(chat_id: int, user_id: int, username: str, chat_title
                     VALUES (%s, %s, 1) AS new_data
                     ON DUPLICATE KEY UPDATE
                     username = new_data.username,
-                    times_taught_nemu = times_taught_nemu + 1,
+                    times_taught_nemu = nemu_interactions.times_taught_nemu + 1,
                     last_interaction = CURRENT_TIMESTAMP
                 """, (user_id, username))
 
@@ -619,8 +619,8 @@ async def update_user_interaction(user_id: int, username: str = None, first_name
                     ON DUPLICATE KEY UPDATE
                     username = new_data.username,
                     first_name = new_data.first_name,
-                    total_messages = total_messages + 1,
-                    times_helped_by_nemu = times_helped_by_nemu + new_data.times_helped_by_nemu,
+                    total_messages = nemu_interactions.total_messages + 1,
+                    times_helped_by_nemu = nemu_interactions.times_helped_by_nemu + new_data.times_helped_by_nemu,
                     last_interaction = CURRENT_TIMESTAMP
                 """, (user_id, username, first_name, helped_count))
                 
@@ -634,8 +634,8 @@ async def setup_commands():
     
     try:
         commands = [
-            BotCommand(command="start", description="🚀 Meet Nemu"),
-            BotCommand(command="help", description="❓ Learn about Nemu"),
+            BotCommand(command="start", description="💐 Meet Nemu"),
+            BotCommand(command="help", description="📙 Learn about Nemu"),
         ]
 
         await bot.set_my_commands(commands, BotCommandScopeDefault())
