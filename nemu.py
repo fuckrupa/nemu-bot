@@ -22,7 +22,7 @@ from aiogram.types import (
     BotCommandScopeDefault
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.enums import ParseMode, ChatType
+from aiogram.enums import ParseMode, ChatType, ChatAction
 
 # Bot token and database configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -72,29 +72,29 @@ IMAGES = [
     "https://ik.imagekit.io/asadofc/Images40.png"
 ]
 
-# Success messages for learning
+# Success messages for learning - SHORT AND STRAIGHTFORWARD
 SUCCESS_LEARNING_MESSAGES = [
-    "Thanks {}! I {} something new globally! 🌍✨",
-    "Awesome {}! I've {} that everywhere. Thanks for teaching me! 🌟💕", 
-    "Great! I {} that information globally. Thank you {}! 🌍🎉",
-    "Perfect! I've {} that knowledge for everyone. Thanks for helping me learn! 🌍🌟"
+    "Got it! ✅",
+    "Learned! 🌟", 
+    "Saved globally! 🌍",
+    "Updated! ✨"
 ]
 
-# Failure messages for learning
+# Failure messages for learning - SHORT AND STRAIGHTFORWARD
 FAILURE_LEARNING_MESSAGES = [
-    "Sorry {}! I couldn't learn that right now. Try again later! 😅",
-    "Oops {}! Something went wrong while learning. Please try again! 🔧",
-    "Failed to save that knowledge {}. My learning system needs a moment! ⚠️",
-    "Couldn't process that teaching {}. Database seems busy! 🔄"
+    "Failed to learn! ❌",
+    "Learning error! 🔧",
+    "Can't save now! ⚠️",
+    "Database busy! 🔄"
 ]
 
-# Don't know response messages
+# Don't know response messages - SHORT AND STRAIGHTFORWARD
 DONT_KNOW_MESSAGES = [
-    "I don't know that yet. Can you teach me? I'll remember it everywhere! 🌍🤔",
-    "Hmm, I haven't learned about that globally. Can you help me learn? 🌟📚",
-    "I'm not sure about that. Could you teach me? I'll share it with everyone! 🌍🧠",
-    "That's new to me globally! Can you explain it to me? ✨",
-    "I don't have that information yet anywhere. Would you like to teach me? 🌍💭"
+    "I don't know. Teach me? 🤔",
+    "Not sure. Help me learn? 📚",
+    "Unknown. Can you explain? 🧠",
+    "New to me. Teach? ✨",
+    "Don't have info. Help? 💭"
 ]
 
 # Personality prefixes for responses
@@ -891,13 +891,17 @@ async def handle_nemu_conversation(message: Message):
             del learning_requests[message.reply_to_message.message_id]
             logger.debug(f"🗑️ Removed learning request")
 
-            # Send appropriate response
+            # Send appropriate response with typing indicator
             if action == "failed":
-                selected_message = random.choice(FAILURE_LEARNING_MESSAGES).format(user.first_name)
+                selected_message = random.choice(FAILURE_LEARNING_MESSAGES)
             else:
-                selected_message = random.choice(SUCCESS_LEARNING_MESSAGES).format(user.first_name, action)
+                selected_message = random.choice(SUCCESS_LEARNING_MESSAGES)
 
             logger.debug(f"💬 Selected response message")
+
+            # Show typing indicator
+            await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            await asyncio.sleep(1)  # Brief pause for typing effect
 
             response_msg = await message.reply(selected_message, parse_mode=ParseMode.HTML)
             bot_messages[response_msg.message_id] = True
@@ -952,6 +956,10 @@ async def handle_nemu_conversation(message: Message):
                 response = personality_prefix + response
                 logger.debug(f"✨ Added personality prefix")
 
+            # Show typing indicator
+            await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            await asyncio.sleep(1)  # Brief pause for typing effect
+
             response_msg = await message.reply(response, parse_mode=ParseMode.HTML)
             bot_messages[response_msg.message_id] = True
 
@@ -963,6 +971,10 @@ async def handle_nemu_conversation(message: Message):
             
             learning_response = random.choice(DONT_KNOW_MESSAGES)
             logger.debug(f"📚 Selected global learning request")
+            
+            # Show typing indicator
+            await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            await asyncio.sleep(1)  # Brief pause for typing effect
             
             response_msg = await message.reply(learning_response, parse_mode=ParseMode.HTML)
 
